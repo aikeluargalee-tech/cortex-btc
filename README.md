@@ -80,6 +80,42 @@ other. Neither can produce a stance on its own; the synthesis step does.
   `UNAVAILABLE` and never blocks a stance.
 - Futures open interest and funding are contextual only.
 
+## Hosting on the local network
+
+```powershell
+.\run.ps1
+```
+
+Binds `0.0.0.0:8787` and requires a token, generated on first run into
+`data/access-token.txt`. Open from another device on the same network:
+
+```
+http://<laptop-ip>:8787/?token=<token>
+```
+
+The token is exchanged once for an HttpOnly cookie, so links inside the app work
+normally afterwards. Without a token, API calls return 401 and pages show a
+token prompt.
+
+**Windows may block inbound connections until you allow them.** If another
+device cannot connect, run once as administrator:
+
+```powershell
+netsh advfirewall firewall add rule name="CORTEX-BTC 8787" dir=in action=allow protocol=TCP localport=8787 profile=private
+```
+
+### Limits of this setup — read before sharing
+
+- **One shared token.** It grants read *and* configuration changes. Treat it as
+  an admin credential and share it only with people you would let retune the
+  stance. Changes are versioned and attributed to the operator name typed in the
+  form, but attribution is self-declared.
+- **HTTP, not HTTPS.** Traffic on the LAN is unencrypted, and the token appears
+  in the URL the first time. Fine for a home network, not for a café.
+- **Never port-forward this port.** It is a LAN appliance, not a public service.
+- If the group grows, the next hardening step is splitting a read token from an
+  admin token for `POST /api/config`.
+
 ## External telemetry (context, never a gate)
 
 A wider Data Hub snapshot can be dropped at `data/telemetry/latest.md`. It is
