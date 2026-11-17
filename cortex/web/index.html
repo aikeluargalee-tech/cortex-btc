@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>CORTEX-BTC — Portfolio Decision System</title>
+<link rel="stylesheet" href="/style.css" />
+<link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+</head>
+<body>
+<div class="shell">
+  <header class="topbar">
+    <div class="brand">
+      <span class="mark" aria-hidden="true"></span>
+      <div>
+        <h1>CORTEX<span>-BTC</span></h1>
+        <p>Bidirectional spot decision system</p>
+      </div>
+    </div>
+
+    <div class="ticker">
+      <div class="price" id="price">—</div>
+      <div class="ticker-meta">
+        <span id="instrument">BTC / USDT</span>
+        <span class="dot">·</span>
+        <span id="market-time">awaiting data</span>
+      </div>
+    </div>
+
+    <div class="status-cluster">
+      <span class="pill" id="data-pill">DATA —</span>
+      <span class="pill warn" id="mode-pill">PAPER · MANUAL</span>
+      <span class="pill ghost" id="badge">UNVALIDATED</span>
+      <button class="btn" id="refresh" type="button">Refresh</button>
+    </div>
+  </header>
+
+  <div class="toolbar">
+    <div class="crumb">Command Centre</div>
+    <div class="toolbar-actions">
+      <button class="btn small" data-drawer="portfolio" type="button">Portfolio</button>
+      <button class="btn small" data-drawer="orders" type="button">Orders</button>
+      <button class="btn small" data-drawer="config" type="button">Config</button>
+      <button class="btn small" data-drawer="audit" type="button">Audit</button>
+    </div>
+  </div>
+
+  <main id="view" class="view">
+    <div class="loading">Connecting to CORTEX…</div>
+  </main>
+
+  <footer class="footer">
+    <span>Spot only · no leverage · no order transmission · human executes</span>
+    <span id="footer-status">strategy status: UNVALIDATED</span>
+  </footer>
+</div>
+
+<div class="scrim" id="scrim" hidden></div>
+<aside class="drawer" id="drawer" hidden aria-hidden="true">
+  <div class="drawer-head">
+    <h2 id="drawer-title">Detail</h2>
+    <button class="btn small" id="drawer-close" type="button">Close</button>
+  </div>
+  <div class="drawer-body" id="drawer-body"></div>
+</aside>
+
+<div class="toast" id="toast" hidden></div>
+<script src="/app.js"></script>
+</body>
+</html>

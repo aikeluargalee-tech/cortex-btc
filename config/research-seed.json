@@ -1,0 +1,55 @@
+{
+  "config_version": "research-seed-2",
+  "label": "Illustrative research profile â€” NOT validated, not optimal",
+  "validation_status": "UNVALIDATED",
+  "operator": "operator",
+  "note": "Every number below is an illustrative research starting point. None of it is backtested or proven. Replace with your own figures before relying on any output.",
+  "portfolio": {
+    "btc_core": "0.15",
+    "btc_tactical": "0.05",
+    "usdt_core": "0",
+    "usdt_tactical": "5000",
+    "min_btc_inventory": "0.15",
+    "min_usdt_inventory": "1000",
+    "max_trade_notional_usdt": "1500",
+    "max_risk_per_trade_pct": "0.75"
+  },
+  "bands": {
+    "defensive": "0",
+    "cautious": "25",
+    "neutral": "50",
+    "constructive": "75",
+    "strongly_constructive": "100",
+    "current": "neutral"
+  },
+  "sleeve": { "active_pct": "50" },
+  "fees": { "maker_bps": "2", "taker_bps": "5", "slippage_bps": "5" },
+  "freshness": { "spot_price_s": 30, "klines_s": 300, "agg_trades_s": 180, "depth_s": 30, "derivatives_s": 300 },
+  "execution": { "max_total_cost_bps": "25", "order_expiry_minutes": 60, "require_limit_order": true },
+  "buy": {
+    "entry_zone_bps": "150",
+    "sweep_min_bps": "15",
+    "invalidation_buffer_bps": "120",
+    "absorption_min": "0.55",
+    "delta_improvement_min": "-5",
+    "require_value_area_reclaim": true,
+    "max_entry_premium_bps": "300"
+  },
+  "sell": {
+    "resistance_zone_bps": "150",
+    "absorption_min": "0.55",
+    "cvd_deterioration_max": "-0.05",
+    "breakdown_buffer_bps": "30",
+    "profit_target_pct": "0.03",
+    "require_breakdown_confirmation": true
+  },
+  "mechanisms": {
+    "profit_taking_max_pct": "0.33",
+    "risk_reduction_max_pct": "0.5",
+    "defensive_exit_max_pct": "1.0"
+  },
+  "regime": { "sma_days": 50, "constructive_above_pct": "1.0", "defensive_below_pct": "3.0" },
+  "analysis": { "value_area_hours": 24, "context_profile_hours": 168 },
+  "mandatory_feeds": ["spot_price", "spot_klines", "spot_agg_trades"]
+}
+
