@@ -16,6 +16,10 @@ what to do with the observation.
 dashboard is a Python process you run yourself (see *Quick start* below, then
 *Hosting on the local network*).
 
+**Public snapshot:** <https://aikeluargalee-tech.github.io/cortex-btc/> — rebuilt
+on a schedule, read-only, and only as fresh as the last build. See *Public
+snapshot* below for what that costs.
+
 ## What it publishes
 
 | Stance | Meaning |
@@ -121,6 +125,25 @@ netsh advfirewall firewall add rule name="CORTEX-BTC 8787" dir=in action=allow p
 - **Never port-forward this port.** It is a LAN appliance, not a public service.
 - If the group grows, the next hardening step is splitting a read token from an
   admin token for `POST /api/config`.
+
+## Public snapshot (GitHub Pages)
+
+`.github/workflows/publish-stance.yml` runs every 15 minutes: it runs the tests,
+builds a static copy via `python -m cortex.export`, and deploys it to Pages.
+
+What this mode gives up, deliberately:
+
+- **Freshness.** GitHub's scheduler drifts; expect a stance that is 10–20 minutes
+  old, sometimes more. The page says so at the top.
+- **Privacy.** A static page cannot check a token. Anyone with the URL sees the
+  stance, and the repository is public, so the thresholds are readable too.
+- **Interaction.** No configuration changes, no audit history, no research run.
+  Those exist only in the self-hosted instance.
+- **Venue.** Builds fetch from Binance.US, because Binance.com returns HTTP 451
+  from GitHub's US runners. Same API shape, different order book, occasionally a
+  slightly different price.
+- **Liveness of the schedule.** GitHub disables scheduled workflows after 60 days
+  without repository activity. A push, or a manual `workflow_dispatch`, revives it.
 
 ## External telemetry (context, never a gate)
 
