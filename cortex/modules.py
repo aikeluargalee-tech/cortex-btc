@@ -1,14 +1,14 @@
 """Module A (accumulation) and Module B (distribution).
 
-Both modules are evidence readers, never authorities: they return an
-assessment with every condition explicitly resolved, and the state is a
-deterministic function of those conditions. Neither can emit an order.
+Both are evidence readers. They return every condition explicitly resolved and
+a state derived deterministically from those conditions. Neither can emit an
+instruction.
 """
 
 from __future__ import annotations
 
 from decimal import Decimal
-from typing import Iterable, Mapping
+from typing import Iterable
 
 from .config import Config
 from .domain import (
@@ -19,19 +19,12 @@ from .domain import (
     MarketSnapshot,
     ModuleAssessment,
     ModuleState,
-    SellMechanism,
+    SellClass,
     dec_str,
 )
 
 ZERO = Decimal("0")
 BP = Decimal("10000")
-
-
-def _f(value: Decimal | None, places: str = "0.01") -> str:
-    """Format a Decimal for operator-facing text without exposing raw precision."""
-    if value is None:
-        return "—"
-    return dec_str(value.quantize(Decimal(places)))
 
 FEED_FEATURES: dict[str, tuple[str, ...]] = {
     "spot_price": ("price",),
@@ -42,22 +35,31 @@ FEED_FEATURES: dict[str, tuple[str, ...]] = {
 }
 
 
-def _status(feature: Feature | None) -> ConditionStatus:
-    if feature is None or feature.value is None:
-        return ConditionStatus.UNAVAILABLE
-    if feature.status in (DataStatus.STALE, DataStatus.UNAVAILABLE, DataStatus.CONFLICTING):
-        return ConditionStatus.UNAVAILABLE
-    return ConditionStatus.PASS
+def _f(value: Decimal | None, places: str = "0.01") -> str:
+    """Format a Decimal for operator-facing text without exposing raw precision."""
+    if value is None:
+        return "—"
+    return dec_str(value.quantize(Decimal(places)))
 
 
-def _cmp(condition_id: str, label: str, category: str, ok: bool | None, detail: str, value: Decimal | None = None, required: bool = True) -> Condition:
+def _cmp(
+    condition_id: str,
+    label: str,
+    category: str,
+    ok: bool | None,
+    detail: str,
+    value: Decimal | None = None,
+    required: bool = True,
+) -> Condition:
     if ok is None:
-        return Condition(id=condition_id, label=label, category=category, status=ConditionStatus.NOT_CONFIGURED, detail=detail, required=required, value=value)
+        status = ConditionStatus.NOT_CONFIGURED
+    else:
+        status = ConditionStatus.PASS if ok else ConditionStatus.FAIL
     return Condition(
         id=condition_id,
         label=label,
         category=category,
-        status=ConditionStatus.PASS if ok else ConditionStatus.FAIL,
+        status=status,
         detail=detail,
         required=required,
         value=value,
@@ -104,7 +106,6 @@ def assess_accumulation(snapshot: MarketSnapshot, config: Config) -> ModuleAsses
     rules = config.buy
     price = snapshot.price
     support = snapshot.value("support")
-    resistance = snapshot.value("resistance")
     vah = snapshot.value("vah")
     sweep_low = snapshot.value("sweep_low")
     delta = snapshot.value("spot_delta_15m")
@@ -144,7 +145,7 @@ def assess_accumulation(snapshot: MarketSnapshot, config: Config) -> ModuleAsses
 
     # A2 — a downside sweep deeper than the configured minimum.
     if rules.sweep_min_bps is None:
-        conditions.append(_cmp("A2", "Downside sweep", "structure", None, "sweep_min_bps is NOT CONFIGURED"))
+        conditions.append(_cmp("A2", "Downside liquidity sweep", "structure", None, "sweep_min_bps is NOT CONFIGURED"))
         a2 = None
     else:
         depth = None if sweep_low is None else ((support - sweep_low) / support) * BP
@@ -155,7 +156,9 @@ def assess_accumulation(snapshot: MarketSnapshot, config: Config) -> ModuleAsses
                 "Downside liquidity sweep",
                 "structure",
                 a2,
-                "no sweep_low observed" if depth is None else f"sweep depth {_f(depth, '0.1')} bps vs minimum {_f(rules.sweep_min_bps, '0.1')}",
+                "no sweep_low observed"
+                if depth is None
+                else f"sweep depth {_f(depth, '0.1')} bps vs minimum {_f(rules.sweep_min_bps, '0.1')}",
                 depth,
             )
         )
@@ -171,7 +174,14 @@ def assess_accumulation(snapshot: MarketSnapshot, config: Config) -> ModuleAsses
         improvement = delta - delta_prev
         a3 = improvement >= rules.delta_improvement_min
         conditions.append(
-            _cmp("A3", "Selling pressure weakens", "flow", a3, f"delta change {_f(improvement)} vs minimum {_f(rules.delta_improvement_min)}", improvement)
+            _cmp(
+                "A3",
+                "Selling pressure weakens",
+                "flow",
+                a3,
+                f"delta change {_f(improvement)} vs minimum {_f(rules.delta_improvement_min)}",
+                improvement,
+            )
         )
 
     # A4 — spot selling not confirming a sustained breakdown.
@@ -179,10 +189,17 @@ def assess_accumulation(snapshot: MarketSnapshot, config: Config) -> ModuleAsses
         conditions.append(_cmp("A4", "Spot selling fails to confirm breakdown", "flow", False, "spot CVD slope unavailable"))
     else:
         conditions.append(
-            _cmp("A4", "Spot selling fails to confirm breakdown", "flow", cvd_slope >= ZERO, f"spot CVD slope {_f(cvd_slope, '0.001')}", cvd_slope)
+            _cmp(
+                "A4",
+                "Spot selling fails to confirm breakdown",
+                "flow",
+                cvd_slope >= ZERO,
+                f"spot CVD slope {_f(cvd_slope, '0.001')}",
+                cvd_slope,
+            )
         )
 
-    # A5 — absorption / bid replenishment.
+    # A5 — absorption.
     if rules.absorption_min is None:
         conditions.append(_cmp("A5", "Demand absorption", "flow", None, "absorption_min is NOT CONFIGURED"))
         a5 = None
@@ -191,7 +208,16 @@ def assess_accumulation(snapshot: MarketSnapshot, config: Config) -> ModuleAsses
         a5 = False
     else:
         a5 = absorption >= rules.absorption_min
-        conditions.append(_cmp("A5", "Demand absorption", "flow", a5, f"absorption {_f(absorption, '0.001')} vs minimum {_f(rules.absorption_min, '0.001')}", absorption))
+        conditions.append(
+            _cmp(
+                "A5",
+                "Demand absorption",
+                "flow",
+                a5,
+                f"absorption {_f(absorption, '0.001')} vs minimum {_f(rules.absorption_min, '0.001')}",
+                absorption,
+            )
+        )
 
     # A6 — reclaim of the auction boundary.
     if rules.require_value_area_reclaim is None:
@@ -216,51 +242,30 @@ def assess_accumulation(snapshot: MarketSnapshot, config: Config) -> ModuleAsses
             )
         )
 
-    # A7 — execution economics.
-    all_in = config.fees.all_in_bps
-    if rules.max_entry_premium_bps is None or all_in is None or config.execution.max_total_cost_bps is None:
-        conditions.append(_cmp("A7", "Entry economics acceptable", "execution", None, "cost or premium limits NOT CONFIGURED"))
-        a7 = None
-    else:
-        premium = _pct(price, support)
-        a7 = premium <= rules.max_entry_premium_bps and all_in <= config.execution.max_total_cost_bps
-        conditions.append(
-            _cmp(
-                "A7",
-                "Entry economics acceptable",
-                "execution",
-                a7,
-                f"premium {_f(premium, '0.1')} bps, all-in cost {_f(all_in, '0.1')} bps",
-                all_in,
-            )
-        )
-
     invalidation = None
     if rules.invalidation_buffer_bps is not None:
         invalidation = support * (Decimal("1") - rules.invalidation_buffer_bps / BP)
 
-    core = [a1, a2, a3, a5, a6]
+    required = (a1, a2, a3, a5, a6)
     state = _accumulation_state(
         halts=halts,
         price=price,
-        support=support,
         invalidation=invalidation,
-        core=core,
+        required=required,
         a3=a3,
         a5=a5,
         cvd_slope=cvd_slope,
-        all_required=(a1, a2, a3, a5, a6, a7),
         a4=conditions[3].status,
     )
 
     summary = {
-        ModuleState.ELIGIBLE: "All accumulation conditions pass and entry economics are acceptable.",
-        ModuleState.CONFIRMED: "Market confirmation achieved; execution economics still block eligibility.",
+        ModuleState.ELIGIBLE: "All accumulation conditions pass: sweep, exhausted selling, absorption and reclaim.",
+        ModuleState.CONFIRMED: "Market confirmation achieved, but a required condition remains unmet.",
         ModuleState.SETUP: "Structural test occurred; confirmation is incomplete.",
         ModuleState.WATCH: "Support is in range but the sweep and confirmation sequence has not started.",
         ModuleState.INVALIDATED: "Price has lost the structural reference; accumulation thesis invalidated.",
         ModuleState.REVIEW: "Evidence conflicts: flow improvement without structural confirmation, or vice versa.",
-        ModuleState.DATA_HALT: "A mandatory feed is not verified; no accumulation decision is possible.",
+        ModuleState.DATA_HALT: "A mandatory feed is not verified; no accumulation assessment is possible.",
     }[state]
 
     return ModuleAssessment(
@@ -268,9 +273,8 @@ def assess_accumulation(snapshot: MarketSnapshot, config: Config) -> ModuleAsses
         state=state,
         conditions=tuple(conditions),
         summary=summary,
-        proposed_limit_price=price,
-        invalidation_price=invalidation,
         reference_level=support,
+        invalidation_price=invalidation,
         data_halt_reasons=halts,
     )
 
@@ -279,63 +283,38 @@ def _accumulation_state(
     *,
     halts: tuple[str, ...],
     price: Decimal,
-    support: Decimal,
     invalidation: Decimal | None,
-    core: list[bool | None],
+    required: Iterable[bool | None],
     a3: bool | None,
     a5: bool | None,
     cvd_slope: Decimal | None,
-    all_required: Iterable[bool | None],
     a4: ConditionStatus,
 ) -> ModuleState:
+    values = list(required)
     if halts:
         return ModuleState.DATA_HALT
     if invalidation is not None and price < invalidation:
         return ModuleState.INVALIDATED
-    required = list(all_required)
-    if any(value is None for value in required):
+    if any(value is None for value in values):
         # An unconfigured rule cannot certify a setup.
-        if any(value is True for value in required):
-            return ModuleState.REVIEW
-        return ModuleState.WATCH
-    if all(required):
+        return ModuleState.REVIEW if any(value is True for value in values) else ModuleState.WATCH
+    if all(values):
         return ModuleState.ELIGIBLE
-    market_core = [a3, a5, core[4]]
-    market_pass = all(value is True for value in market_core)
-    structural = core[0] is True and core[1] is True
-    if structural and market_pass and any(value is False for value in required):
+    structural = values[0] is True and values[1] is True
+    market_pass = values[2] is True and values[3] is True and values[4] is True
+    if structural and market_pass:
         return ModuleState.CONFIRMED
-    passes = sum(1 for value in core if value is True)
+    passes = sum(1 for value in values if value is True)
     if structural and passes >= 3:
         if a3 is False and a5 is True and cvd_slope is not None and cvd_slope < ZERO:
             return ModuleState.REVIEW
         return ModuleState.SETUP
-    if core[0]:
-        return ModuleState.WATCH
     return ModuleState.WATCH
 
 
 # --------------------------------------------------------------------------
 # Module B — distribution
 # --------------------------------------------------------------------------
-
-
-def _sell_mechanism(snapshot: MarketSnapshot, config: Config, breakdown: bool, regime: str | None) -> SellMechanism | None:
-    caps = config.mechanisms
-    if breakdown and caps.defensive_exit_max_pct is not None:
-        return SellMechanism.DEFENSIVE_EXIT
-    if regime in ("DEFENSIVE", "DISLOCATION") and caps.defensive_exit_max_pct is not None:
-        return SellMechanism.DEFENSIVE_EXIT
-    absorption = snapshot.value("supply_absorption")
-    if absorption is not None and caps.risk_reduction_max_pct is not None:
-        return SellMechanism.RISK_REDUCTION
-    average_cost = snapshot.value("average_cost_basis")
-    target = config.sell.profit_target_pct
-    price = snapshot.price
-    if average_cost is not None and target is not None and price is not None and caps.profit_taking_max_pct is not None:
-        if price >= average_cost * (Decimal("1") + target):
-            return SellMechanism.PROFIT_TAKING
-    return None
 
 
 def assess_distribution(snapshot: MarketSnapshot, config: Config, regime: str | None = None) -> ModuleAssessment:
@@ -369,7 +348,14 @@ def assess_distribution(snapshot: MarketSnapshot, config: Config, regime: str | 
         distance = _pct(resistance, price)
         b1 = ZERO <= distance <= rules.resistance_zone_bps
         conditions.append(
-            _cmp("B1", "Resistance / supply test", "structure", b1, f"price {_f(price)} is {_f(distance, '0.1')} bps below resistance {_f(resistance)}", resistance)
+            _cmp(
+                "B1",
+                "Resistance / supply test",
+                "structure",
+                b1,
+                f"price {_f(price)} is {_f(distance, '0.1')} bps below resistance {_f(resistance)}",
+                resistance,
+            )
         )
 
     # B2 — aggressive buying absorbed by supply.
@@ -381,7 +367,16 @@ def assess_distribution(snapshot: MarketSnapshot, config: Config, regime: str | 
         b2 = False
     else:
         b2 = absorption >= rules.absorption_min
-        conditions.append(_cmp("B2", "Supply absorption", "flow", b2, f"absorption {_f(absorption, '0.001')} vs minimum {_f(rules.absorption_min, '0.001')}", absorption))
+        conditions.append(
+            _cmp(
+                "B2",
+                "Supply absorption",
+                "flow",
+                b2,
+                f"absorption {_f(absorption, '0.001')} vs minimum {_f(rules.absorption_min, '0.001')}",
+                absorption,
+            )
+        )
 
     # B3 — buying volume without price progress.
     if delta is None or price_change is None:
@@ -389,13 +384,23 @@ def assess_distribution(snapshot: MarketSnapshot, config: Config, regime: str | 
         b3 = False
     else:
         b3 = delta > ZERO and price_change <= ZERO
-        conditions.append(_cmp("B3", "Spot buying fails to sustain price", "flow", b3, f"delta {_f(delta)}, price change {_f(price_change)}%", price_change))
+        conditions.append(
+            _cmp(
+                "B3",
+                "Spot buying fails to sustain price",
+                "flow",
+                b3,
+                f"delta {_f(delta)}, price change {_f(price_change)}%",
+                price_change,
+            )
+        )
 
-    # B4 — failed reclaim or confirmed breakdown.
+    # B4 — a test of the value area that failed, or a confirmed breakdown.
     if rules.breakdown_buffer_bps is None:
         conditions.append(_cmp("B4", "Failed reclaim / breakdown", "auction", None, "breakdown_buffer_bps is NOT CONFIGURED"))
         b4 = None
         breakdown = False
+        failed_reclaim = False
     else:
         breakdown = price < support * (Decimal("1") - rules.breakdown_buffer_bps / BP)
         recent_high = snapshot.value("recent_high")
@@ -421,28 +426,34 @@ def assess_distribution(snapshot: MarketSnapshot, config: Config, regime: str | 
         b5 = False
     else:
         b5 = cvd_slope <= rules.cvd_deterioration_max
-        conditions.append(_cmp("B5", "Spot CVD deteriorates", "flow", b5, f"CVD slope {_f(cvd_slope, '0.001')} vs maximum {_f(rules.cvd_deterioration_max, '0.001')}", cvd_slope))
+        conditions.append(
+            _cmp(
+                "B5",
+                "Spot CVD deteriorates",
+                "flow",
+                b5,
+                f"CVD slope {_f(cvd_slope, '0.001')} vs maximum {_f(rules.cvd_deterioration_max, '0.001')}",
+                cvd_slope,
+            )
+        )
 
-    # B6 — exit economics.
-    all_in = config.fees.all_in_bps
-    if all_in is None or config.execution.max_total_cost_bps is None:
-        conditions.append(_cmp("B6", "Exit economics acceptable", "execution", None, "cost limits NOT CONFIGURED"))
-        b6 = None
-    else:
-        b6 = all_in <= config.execution.max_total_cost_bps
-        conditions.append(_cmp("B6", "Exit economics acceptable", "execution", b6, f"all-in cost {dec_str(all_in)} bps vs maximum {dec_str(config.execution.max_total_cost_bps)}", all_in))
+    required = (b1, b2, b3, b4, b5)
+    sell_class: SellClass | None = None
+    if b4 and breakdown:
+        sell_class = SellClass.BREAKDOWN
+    elif b4 and failed_reclaim:
+        sell_class = SellClass.DISTRIBUTION
 
-    mechanism = _sell_mechanism(snapshot, config, breakdown, regime)
-    required = (b1, b2, b3, b4, b5, b6)
     if halts:
         state = ModuleState.DATA_HALT
-        summary = "A mandatory feed is not verified; no distribution decision is possible."
-    elif mechanism is None:
-        state = ModuleState.REVIEW
-        summary = "Distribution evidence exists but no selling mechanism is configured; classification is a required input."
-    elif all(value is True for value in required):
+        summary = "A mandatory feed is not verified; no distribution assessment is possible."
+    elif all(value is True for value in required) and sell_class is not None:
         state = ModuleState.ELIGIBLE
-        summary = f"Distribution qualified as {mechanism.value}; inventory and sizing are still controlled centrally."
+        summary = (
+            "Supply is being absorbed and price has failed to hold value: a structural breakdown."
+            if sell_class is SellClass.BREAKDOWN
+            else "Supply is being absorbed and price has failed to hold value: distribution."
+        )
     elif b1 and b2 and sum(1 for value in (b2, b3, b4, b5) if value) >= 2:
         state = ModuleState.SETUP
         summary = "Supply is present and buying is losing effect; the sequence is not yet complete."
@@ -458,12 +469,8 @@ def assess_distribution(snapshot: MarketSnapshot, config: Config, regime: str | 
         state=state,
         conditions=tuple(conditions),
         summary=summary,
-        proposed_limit_price=price,
-        invalidation_price=None,
         reference_level=resistance,
-        mechanism=mechanism
-        if state in (ModuleState.SETUP, ModuleState.CONFIRMED, ModuleState.ELIGIBLE)
-        else None,
+        sell_class=sell_class if state in (ModuleState.SETUP, ModuleState.CONFIRMED, ModuleState.ELIGIBLE) else None,
         data_halt_reasons=halts,
     )
 
@@ -482,7 +489,7 @@ def classify_regime(snapshot: MarketSnapshot, config: Config) -> tuple[str | Non
         regime = "DEFENSIVE"
     else:
         regime = "CAUTIOUS"
-    return regime, f"price {dec_str(distance.quantize(Decimal('0.01')))}% vs {rules.sma_days}-day SMA"
+    return regime, f"price {_f(distance)}% vs {rules.sma_days}-day SMA"
 
 
 __all__ = [

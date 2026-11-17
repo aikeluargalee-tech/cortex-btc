@@ -184,8 +184,6 @@ def _book_imbalance(depth: dict[str, Any], band: Decimal = Decimal("0.005")) -> 
 def build_snapshot(
     *,
     config,
-    average_cost: Decimal | None = None,
-    max_age_seconds: int = 60,
 ) -> MarketSnapshot:
     """Fetch public data and derive features. Failures degrade, never invent."""
     client = BinancePublic()
@@ -309,15 +307,6 @@ def build_snapshot(
         source="none configured",
         detail="no verified liquidation source; heatmap estimates are not confirmed liquidations",
     )
-
-    if average_cost is not None:
-        features["average_cost_basis"] = Feature(
-            average_cost, DataStatus.VERIFIED, "internal ledger", utc_now(), "weighted average cost of acquired tactical BTC"
-        )
-    else:
-        features["average_cost_basis"] = Feature(
-            value=None, status=DataStatus.UNAVAILABLE, source="internal ledger", detail="no purchases recorded"
-        )
 
     as_of = max(observed) if observed else utc_now()
     snapshot = build_market_snapshot(

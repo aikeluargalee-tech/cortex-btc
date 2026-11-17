@@ -1,20 +1,31 @@
 # CORTEX-BTC — Initial Implementation Map
 
-**Status:** Reconnaissance complete. Vertical slice (Phases 1–4 plus core screens) built and running.
-**Reference:** CORTEX-ANTIGRAVITY-HANDOVER-001 v1.0 (G2), brief G1, architecture diagram G3.
+**Status:** Pivoted to a signal-only product. Portfolio, allocation and order
+lifecycle are out of scope and preserved in git at `8b2ee6d`.
+**Reference:** CORTEX-ANTIGRAVITY-HANDOVER-001 v1.0 (G2), brief G1, architecture diagram G3, D2 (strategy input).
 **Date:** 2026-11-17
 
-## 0. As built
+## 0. Scope decision (latest)
 
-The slice lives in this repository and runs with `python -m cortex.server`.
-It contains: the event-sourced dual-inventory ledger, public Binance ingestion with
-per-feature provenance, both assessment modules, the allocation controller with named
-binding constraints, the ten-gate authority, configuration versioning, the human order
-lifecycle, and a single-screen Command Centre with Portfolio / Orders / Config / Audit
-drawers. 39 tests pass.
+The product publishes a **market stance** — QUALIFIED BUY ZONE, QUALIFIED SELL
+ZONE, NO SETUP, CONFLICT or DATA HALT — for a small private group. It no longer
+holds balances, sizes positions, or manages orders.
 
-Deliberate omissions for this slice: telemetry charting, historical replay/backtesting,
-conversion-cycle reporting, and paper-trading performance. Those are Phase 5–6.
+Removed from the product: dual-inventory ledger, allocation controller, position
+sizing, order lifecycle, conversion cycles, portfolio operating states.
+Retained: data integrity gate, regime, Module A, Module B, independent
+classification of DISTRIBUTION vs BREAKDOWN, conflict resolution, audit.
+
+Why the retention list is not negotiable: without a data gate the stance is
+unfounded; without conflict resolution the two modules compete for authority;
+without the test-and-rejection requirement "distribution" fires on any price
+below value.
+
+## 0b. As built
+
+Runs with `python -m cortex.server`: six gates, one stance, single-screen
+dashboard, configuration versioning, decision records with replay hashes,
+provenance for every feature. 20 tests pass.
 
 ---
 
@@ -132,16 +143,19 @@ Authority: A-qualified/B-deteriorating, both-qualified conflict, stale CVD, miss
 Determinism: same snapshot twice → one decision, no duplicate reservation; replay → identical verdict.
 Governance: config change is versioned with before/after and operator; no parameter can be edited without a new version.
 
-## 10. Phases
+## 10. Where this stands
 
-| Phase | Deliverable | State |
+| Stage | Deliverable | State |
 |---|---|---|
-| 1 | Config, quality, dual-inventory ledger, reservations, audit log | built |
+| 1 | Config versioning, data quality gate, audit log | built |
 | 2 | Modules A and B, independent evidence matrices, state machine | built |
-| 3 | Allocation controller, sizing, binding constraints | built |
-| 4 | Ten-gate authority, verdict, snapshots, replay | built |
-| 5 | Dashboard (8 screens) on real public spot data | 6 of 8 screens built; telemetry charts outstanding |
-| 6 | Replay, backtest, benchmarks, paper trading | not started |
+| 3 | Conflict resolution, one stance, replay hashes | built |
+| 4 | Single-screen dashboard, provenance, export | built |
+| 5 | Historical base rates — how often each stance fires, and what followed | **next, and the one that decides whether this is valuable** |
+| 6 | Backtest with fees, slippage, unfilled conditions, benchmark comparison | not started |
+
+Stage 5 is not optional decoration. A stance with no measured history is a
+well-typeset opinion, and this product is for other people.
 
 ## 11. Risks I am flagging now
 

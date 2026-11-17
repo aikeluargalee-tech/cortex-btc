@@ -1,7 +1,7 @@
 """Local HTTP server: JSON API plus the static dashboard.
 
-Binds to loopback only. There is no authentication because there is no
-network exposure, no exchange key and no execution capability.
+Binds to loopback only. No authentication because there is no network
+exposure, no exchange key and no execution capability.
 """
 
 from __future__ import annotations
@@ -9,9 +9,7 @@ from __future__ import annotations
 import json
 import mimetypes
 import os
-import re
 import sys
-from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
@@ -24,9 +22,8 @@ ALLOWED_FILES = {"index.html", "app.js", "style.css", "favicon.svg"}
 
 class Handler(BaseHTTPRequestHandler):
     app: CortexApp
-    server_version = "CORTEX-BTC/0.1"
+    server_version = "CORTEX-BTC/0.2"
 
-    # -- plumbing ----------------------------------------------------------
     def log_message(self, fmt: str, *args) -> None:  # quieter console
         if os.environ.get("CORTEX_VERBOSE"):
             super().log_message(fmt, *args)
@@ -67,14 +64,15 @@ class Handler(BaseHTTPRequestHandler):
             return
         body = target.read_bytes()
         content_type = mimetypes.guess_type(name)[0] or "application/octet-stream"
+        if content_type.startswith("text/") or content_type.endswith("javascript"):
+            content_type += "; charset=utf-8"
         self.send_response(200)
-        self.send_header("Content-Type", content_type + ("; charset=utf-8" if content_type.startswith("text/") or content_type.endswith("javascript") else ""))
+        self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(body)
 
-    # -- routes ------------------------------------------------------------
     def do_GET(self) -> None:  # noqa: N802
         parsed = urlparse(self.path)
         path = parsed.path
@@ -82,7 +80,7 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if path.startswith("/api/"):
                 if path == "/api/health":
-                    self._json({"ok": True, "version": "0.1.0", "mode": "decision-support"})
+                    self._json({"ok": True, "version": "0.2.0", "mode": "market-stance"})
                     return
                 if path == "/api/state":
                     force = query.get("refresh", ["0"])[0] in ("1", "true")
@@ -97,17 +95,6 @@ class Handler(BaseHTTPRequestHandler):
                     return
                 if path == "/api/export/decisions.json":
                     self._json({"decisions": self.app.export_decisions()})
-                    return
-                if path == "/api/orders":
-                    self._json({"orders": self.app.store.orders()})
-                    return
-                if path.startswith("/api/orders/"):
-                    order_id = path.split("/")[3]
-                    order = self.app.store.order(order_id)
-                    if not order:
-                        self._error("unknown order", 404)
-                        return
-                    self._json({"order": order, "events": self.app.store.order_events(order_id)})
                     return
                 self._error("not found", 404)
                 return
@@ -124,10 +111,6 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/refresh":
                 self._json(self.app.build_state(force=True))
                 return
-            if path == "/api/portfolio":
-                result = self.app.set_portfolio(payload, operator=str(payload.get("operator", "operator")))
-                self._json(result)
-                return
             if path == "/api/config":
                 changes = payload.get("changes") or {}
                 if not isinstance(changes, dict) or not changes:
@@ -138,15 +121,6 @@ class Handler(BaseHTTPRequestHandler):
                     note=str(payload.get("note", "")),
                 )
                 self._json({"ok": True, "config": config.to_dict()})
-                return
-            if path == "/api/orders/approve":
-                decision_id = str(payload.get("decision_id", ""))
-                self._json(self.app.approve(decision_id, operator=str(payload.get("operator", "operator"))))
-                return
-            match = re.match(r"^/api/orders/([A-Za-z0-9_\-]+)/(submit|work|fill|cancel|expire|reject)$", path)
-            if match:
-                order_id, action = match.group(1), match.group(2)
-                self._json(self.app.transition(order_id, action, payload))
                 return
             self._error("not found", 404)
         except AppError as error:
@@ -163,8 +137,6 @@ def serve(app: CortexApp, host: str = "127.0.0.1", port: int = 8787) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    from .app import CortexApp
-
     argv = argv if argv is not None else sys.argv[1:]
     root = Path(__file__).resolve().parents[1]
     db = os.environ.get("CORTEX_DB", str(root / "data" / "cortex.db"))

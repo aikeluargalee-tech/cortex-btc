@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import sys
-from datetime import timedelta
 from decimal import Decimal
 from pathlib import Path
 
@@ -18,12 +17,9 @@ from cortex.domain import (  # noqa: E402
     DataStatus,
     Feature,
     MarketSnapshot,
-    PortfolioSnapshot,
     build_market_snapshot,
-    build_portfolio_snapshot,
     utc_now,
 )
-from cortex.ledger import Ledger, available_btc, available_usdt  # noqa: E402
 
 SEED = ROOT / "config" / "research-seed.json"
 
@@ -34,13 +30,7 @@ def config() -> Config:
 
 
 def feature(value: str | None, status: DataStatus = DataStatus.VERIFIED, detail: str = "") -> Feature:
-    return Feature(
-        None if value is None else Decimal(value),
-        status,
-        "test",
-        utc_now(),
-        detail,
-    )
+    return Feature(None if value is None else Decimal(value), status, "test", utc_now(), detail)
 
 
 DEFAULT_FEATURES = {
@@ -61,7 +51,6 @@ DEFAULT_FEATURES = {
     "book_imbalance": ("0.18", DataStatus.VERIFIED),
     "sma": ("63200", DataStatus.VERIFIED),
     "liquidations": (None, DataStatus.UNAVAILABLE),
-    "average_cost_basis": ("64000", DataStatus.VERIFIED),
 }
 
 
@@ -86,35 +75,4 @@ def make_market(config: Config, **overrides: tuple[str | None, DataStatus] | str
         features=features,
         config_version=config.config_version,
         source="test",
-    )
-
-
-def make_ledger(
-    *,
-    btc_core: str = "0.15",
-    btc_tactical: str = "0.05",
-    usdt_core: str = "0",
-    usdt_tactical: str = "5000",
-) -> Ledger:
-    ledger = Ledger()
-    ledger.seed(
-        btc_core=Decimal(btc_core),
-        btc_tactical=Decimal(btc_tactical),
-        usdt_core=Decimal(usdt_core),
-        usdt_tactical=Decimal(usdt_tactical),
-    )
-    return ledger
-
-
-def make_portfolio(ledger: Ledger, config: Config, price: Decimal | None = None) -> PortfolioSnapshot:
-    state = ledger.state()
-    if price is None:
-        price = Decimal("64800")
-    return build_portfolio_snapshot(
-        as_of=utc_now(),
-        price=price,
-        ledger=state,
-        available_btc=available_btc(state, config),
-        available_usdt=available_usdt(state, config),
-        config_version=config.config_version,
     )

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>CORTEX-BTC — Portfolio Decision System</title>
+<title>CORTEX-BTC — Market Stance</title>
 <link rel="stylesheet" href="/style.css" />
 <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
 </head>
@@ -14,14 +14,14 @@
       <span class="mark" aria-hidden="true"></span>
       <div>
         <h1>CORTEX<span>-BTC</span></h1>
-        <p>Bidirectional spot decision system</p>
+        <p>Market stance · spot BTC/USDT</p>
       </div>
     </div>
 
     <div class="ticker">
       <div class="price" id="price">—</div>
       <div class="ticker-meta">
-        <span id="instrument">BTC / USDT</span>
+        <span>BTC / USDT</span>
         <span class="dot">·</span>
         <span id="market-time">awaiting data</span>
       </div>
@@ -29,18 +29,15 @@
 
     <div class="status-cluster">
       <span class="pill" id="data-pill">DATA —</span>
-      <span class="pill warn" id="mode-pill">PAPER · MANUAL</span>
       <span class="pill ghost" id="badge">UNVALIDATED</span>
       <button class="btn" id="refresh" type="button">Refresh</button>
     </div>
   </header>
 
   <div class="toolbar">
-    <div class="crumb">Command Centre</div>
+    <div class="crumb">Current stance</div>
     <div class="toolbar-actions">
-      <button class="btn small" data-drawer="portfolio" type="button">Portfolio</button>
-      <button class="btn small" data-drawer="orders" type="button">Orders</button>
-      <button class="btn small" data-drawer="config" type="button">Config</button>
+      <button class="btn small" data-drawer="config" type="button">Configuration</button>
       <button class="btn small" data-drawer="audit" type="button">Audit</button>
     </div>
   </div>
@@ -50,7 +47,7 @@
   </main>
 
   <footer class="footer">
-    <span>Spot only · no leverage · no order transmission · human executes</span>
+    <span>Not financial advice · observation only · no execution · spot only</span>
     <span id="footer-status">strategy status: UNVALIDATED</span>
   </footer>
 </div>
