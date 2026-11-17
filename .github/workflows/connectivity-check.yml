@@ -1,0 +1,32 @@
+name: connectivity-check
+
+on:
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Binance spot ping
+        run: |
+          code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 20 https://api.binance.com/api/v3/ping || echo "000")
+          echo "binance spot ping HTTP: $code"
+
+      - name: Binance price
+        run: |
+          curl -s --max-time 20 "https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT" | head -c 200 || true
+          echo
+
+      - name: Binance futures
+        run: |
+          code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 20 https://fapi.binance.com/fapi/v1/premiumIndex?symbol=BTCUSDT || echo "000")
+          echo "binance futures HTTP: $code"
+
+      - name: Coinbase fallback
+        run: |
+          curl -s --max-time 20 "https://api.exchange.coinbase.com/products/BTC-USD/ticker" | head -c 200 || true
+          echo
+
+      - name: Runner location
+        run: |
+          curl -s --max-time 20 https://ipinfo.io/json | head -c 300 || true
