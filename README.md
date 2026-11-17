@@ -142,8 +142,21 @@ What this mode gives up, deliberately:
 - **Venue.** Builds fetch from Binance.US, because Binance.com returns HTTP 451
   from GitHub's US runners. Same API shape, different order book, occasionally a
   slightly different price.
-- **Liveness of the schedule.** GitHub disables scheduled workflows after 60 days
-  without repository activity. A push, or a manual `workflow_dispatch`, revives it.
+- **Liveness of the schedule.** GitHub's own cron is best-effort: on this
+  repository `*/15` fired **zero times in 71 minutes**. A Windows scheduled task
+  (`CORTEX BTC stance publish`) therefore dispatches the workflow explicitly
+  every 10 minutes while the host laptop is on, via
+  `scripts/refresh-stance.ps1 -Wait`. Its log is `data/publish.log`.
+
+  ```powershell
+  Get-ScheduledTask "CORTEX BTC stance publish"          # inspect
+  Start-ScheduledTask "CORTEX BTC stance publish"        # run now
+  Unregister-ScheduledTask "CORTEX BTC stance publish"   # remove
+  ```
+
+  With the laptop off, freshness falls back to GitHub's scheduler — which is
+  exactly the thing that cannot be relied on here. If the page must stay fresh
+  unattended, it needs a host, not Pages.
 
 ## External telemetry (context, never a gate)
 
