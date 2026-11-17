@@ -136,20 +136,7 @@ class CortexApp:
             return None
 
     def trend(self, market: MarketSnapshot) -> dict[str, Any]:
-        daily_close = market.value("daily_close")
-        sma200 = market.value("sma200")
-        distance = None
-        position = "UNAVAILABLE"
-        if daily_close is not None and sma200 not in (None, 0):
-            distance = ((daily_close - sma200) / sma200) * 100
-            position = "BELOW" if daily_close < sma200 else "ABOVE"
-        return {
-            "daily_close": dec_str(daily_close),
-            "sma200": dec_str(sma200),
-            "distance_pct": dec_str(distance.quantize(Decimal("0.01"))) if distance is not None else None,
-            "position": position,
-            "gating": False,
-        }
+        return trend_context(market)
 
     # -- stance ------------------------------------------------------------
     def build_state(self, *, force: bool = False) -> dict[str, Any]:
@@ -168,19 +155,7 @@ class CortexApp:
             "trend": self.trend(market),
             "telemetry": self.telemetry(),
             "research": self.research(),
-            "integrations": {
-                "degraded_features": [
-                    {"key": key, "status": feature.status.value, "detail": feature.detail}
-                    for key, feature in market.features.items()
-                    if feature.status is not DataStatus.VERIFIED
-                ],
-                "degraded_critical": [
-                    {"key": key, "status": feature.status.value, "detail": feature.detail}
-                    for key, feature in market.features.items()
-                    if feature.status in (DataStatus.STALE, DataStatus.UNAVAILABLE, DataStatus.CONFLICTING)
-                    and key not in CONTEXTUAL_FEATURES
-                ],
-            },
+            "integrations": degradation(market),
             "config_history": self.config_history(),
         }
 
@@ -198,4 +173,38 @@ def _dig(payload: dict[str, Any], path: str) -> Any:
     return cursor
 
 
-__all__ = ["CortexApp", "AppError"]
+def trend_context(market: MarketSnapshot) -> dict[str, Any]:
+    """Last closed 1D close against its 200-day average. Context, never a gate."""
+    daily_close = market.value("daily_close")
+    sma200 = market.value("sma200")
+    distance = None
+    position = "UNAVAILABLE"
+    if daily_close is not None and sma200 not in (None, 0):
+        distance = ((daily_close - sma200) / sma200) * 100
+        position = "BELOW" if daily_close < sma200 else "ABOVE"
+    return {
+        "daily_close": dec_str(daily_close),
+        "sma200": dec_str(sma200),
+        "distance_pct": dec_str(distance.quantize(Decimal("0.01"))) if distance is not None else None,
+        "position": position,
+        "gating": False,
+    }
+
+
+def degradation(market: MarketSnapshot) -> dict[str, Any]:
+    return {
+        "degraded_features": [
+            {"key": key, "status": feature.status.value, "detail": feature.detail}
+            for key, feature in market.features.items()
+            if feature.status is not DataStatus.VERIFIED
+        ],
+        "degraded_critical": [
+            {"key": key, "status": feature.status.value, "detail": feature.detail}
+            for key, feature in market.features.items()
+            if feature.status in (DataStatus.STALE, DataStatus.UNAVAILABLE, DataStatus.CONFLICTING)
+            and key not in CONTEXTUAL_FEATURES
+        ],
+    }
+
+
+__all__ = ["CortexApp", "AppError", "trend_context", "degradation"]

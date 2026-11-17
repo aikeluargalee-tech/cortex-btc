@@ -8,6 +8,9 @@ const S = {
   expand: { gates: false, a: false, b: false },
 };
 
+const STATIC = !!window.CORTEX_STATIC;
+const STATE_URL = STATIC ? "./state.json" : "/api/state";
+
 /* ---------------- helpers ---------------- */
 const $ = (sel) => document.querySelector(sel);
 
@@ -65,7 +68,13 @@ async function load(force = false) {
   S.loading = true;
   $("#refresh").disabled = true;
   try {
-    S.state = await api(`/api/state${force ? "?refresh=1" : ""}`);
+    if (STATIC) {
+      const response = await fetch(`${STATE_URL}?t=${Date.now()}`, { cache: "no-store" });
+      if (!response.ok) throw new Error("snapshot unavailable");
+      S.state = await response.json();
+    } else {
+      S.state = await api(`/api/state${force ? "?refresh=1" : ""}`);
+    }
     render();
   } catch (error) {
     $("#view").innerHTML = `<div class="card"><div class="banner"><strong>CORTEX cannot publish a stance.</strong><br>${esc(error.message)}</div></div>`;
@@ -93,6 +102,11 @@ function renderChrome() {
     pill.className = "pill ok";
   }
   $("#footer-status").textContent = `strategy status: ${s.config.validation_status} · config ${s.config.config_version}`;
+  if (STATIC) {
+    $("#refresh").textContent = "Reload";
+    $("#footer-status").textContent =
+      `static snapshot · generated ${time(s.generated_at)} · strategy ${s.config.validation_status}`;
+  }
 }
 
 /* ---------------- blocks ---------------- */
@@ -306,12 +320,15 @@ function drawerConfig() {
           ${fields.map(([path, label]) => {
             const value = dig(path);
             return `<div class="field"><label>${esc(label)}</label>
-              <input data-cfg="${esc(path)}" value="${value === null || value === undefined ? "" : esc(value)}" placeholder="NOT CONFIGURED" /></div>`;
+              <input data-cfg="${esc(path)}" value="${value === null || value === undefined ? "" : esc(value)}"
+                placeholder="NOT CONFIGURED" ${STATIC ? "disabled" : ""} /></div>`;
           }).join("")}
         </div>`).join("")}
-      <div class="field" style="margin-top:14px"><label>Operator</label><input id="cfg_operator" value="operator" /></div>
-      <div class="field" style="margin-top:10px"><label>Reason for change</label><input id="cfg_note" placeholder="why this change is being made" /></div>
-      <button class="btn primary" id="save_config" style="margin-top:12px">Save as new version</button>
+      <div class="field" style="margin-top:14px"><label>Operator</label><input id="cfg_operator" value="operator" ${STATIC ? "disabled" : ""} /></div>
+      <div class="field" style="margin-top:10px"><label>Reason for change</label><input id="cfg_note" placeholder="why this change is being made" ${STATIC ? "disabled" : ""} /></div>
+      ${STATIC
+        ? `<p class="hint" style="margin-top:12px">Read-only snapshot. Configuration changes are only accepted by the self-hosted instance.</p>`
+        : `<button class="btn primary" id="save_config" style="margin-top:12px">Save as new version</button>`}
       <p class="hint" style="margin-top:10px">Missing: ${s.config_missing.length ? esc(s.config_missing.join(", ")) : "nothing required is missing"}.</p>
     </div>
     <div class="card tight">
@@ -399,7 +416,9 @@ function drawerResearch() {
         <div class="card-head"><h2>Veto study</h2><span class="note">2 years, daily + 4H</span></div>
         <p class="hint">Tests whether the external 200D / 4H hard-downtrend veto carries information: how often it fires,
         and what price did afterwards. It does not test your stance.</p>
-        <button class="btn primary" id="run_research" style="margin-top:10px">Run study</button>
+        ${STATIC
+          ? `<p class="hint" style="margin-top:10px">The study runs on the self-hosted instance; it is not part of the static snapshot.</p>`
+          : `<button class="btn primary" id="run_research" style="margin-top:10px">Run study</button>`}
       </div>`;
   }
   const horizons = [1, 5, 10, 20];
@@ -465,7 +484,9 @@ function drawerResearch() {
 function drawerTelemetry() {
   const t = S.state.telemetry;
   if (!t) {
-    return `<div class="banner">No external snapshot found. Place the Data Hub report at <code>data/telemetry/latest.md</code>
+    return STATIC
+      ? `<div class="banner">This static snapshot does not include the external telemetry file. Open the self-hosted instance for it.</div>`
+      : `<div class="banner">No external snapshot found. Place the Data Hub report at <code>data/telemetry/latest.md</code>
       and refresh. It is ingested as context only — it can never change a stance.</div>`;
   }
   const gate = t.gate_zero || {};
@@ -635,8 +656,8 @@ document.addEventListener("keydown", (event) => {
 const initial = (location.hash || "").replace("#", "");
 if (PANELS[initial]) S.drawer = initial;
 
-$("#refresh").addEventListener("click", () => load(true));
-setInterval(() => { if (!document.hidden) load(false); }, 45000);
+$("#refresh").addEventListener("click", () => (STATIC ? location.reload() : load(true)));
+setInterval(() => { if (!document.hidden && !STATIC) load(false); }, 45000);
 load(true).then(() => {
   if (S.drawer === "audit") loadDecisions();
 });

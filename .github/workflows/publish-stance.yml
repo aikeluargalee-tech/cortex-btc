@@ -1,0 +1,60 @@
+name: publish-stance
+
+on:
+  schedule:
+    # GitHub does not guarantee the exact minute; expect 10-20 minutes of drift.
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "cortex/**"
+      - "config/**"
+      - "cortex/export.py"
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install test runner
+        run: python -m pip install --quiet pytest
+
+      - name: Run tests
+        run: python -m pytest -q
+
+      - name: Build static snapshot
+        env:
+          # Binance.com returns HTTP 451 from US runners; Binance.US serves the
+          # same kline shape and is reachable.
+          CORTEX_SPOT_BASE: https://api.binance.us
+          CORTEX_FUTURES_BASE: https://fapi.binance.us
+        run: python -m cortex.export --out _site --config config/research-seed.json
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

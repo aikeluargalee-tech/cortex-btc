@@ -8,6 +8,7 @@ reported UNAVAILABLE rather than estimated.
 from __future__ import annotations
 
 import json
+import os
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
@@ -17,9 +18,11 @@ from typing import Any, Iterable, Sequence
 
 from .domain import DataStatus, Feature, MarketSnapshot, build_market_snapshot, utc_now
 
-SPOT_BASE = "https://api.binance.com"
-FUTURES_BASE = "https://fapi.binance.com"
-USER_AGENT = "CORTEX-BTC/0.1 (decision support, read-only)"
+# Venue is configurable because Binance.com blocks US IPs, which is where
+# GitHub's runners live. Binance.US exposes the same kline shape.
+SPOT_BASE = os.environ.get("CORTEX_SPOT_BASE", "https://api.binance.com").rstrip("/")
+FUTURES_BASE = os.environ.get("CORTEX_FUTURES_BASE", "https://fapi.binance.com").rstrip("/")
+USER_AGENT = "CORTEX-BTC/0.2 (decision support, read-only)"
 
 
 class MarketDataError(RuntimeError):
