@@ -96,6 +96,13 @@ class Handler(BaseHTTPRequestHandler):
                 if path == "/api/export/decisions.json":
                     self._json({"decisions": self.app.export_decisions()})
                     return
+                if path == "/api/research":
+                    report = self.app.research()
+                    if report is None:
+                        self._json({"ok": False, "reason": "no study has been run yet"}, 404)
+                        return
+                    self._json(report)
+                    return
                 self._error("not found", 404)
                 return
             self._static(path)
@@ -110,6 +117,13 @@ class Handler(BaseHTTPRequestHandler):
             payload = self._body()
             if path == "/api/refresh":
                 self._json(self.app.build_state(force=True))
+                return
+            if path == "/api/research/refresh":
+                from .research import run_veto_study, save_report
+
+                report = run_veto_study()
+                save_report(report, self.app.research_path)
+                self._json(report)
                 return
             if path == "/api/config":
                 changes = payload.get("changes") or {}

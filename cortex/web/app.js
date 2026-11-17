@@ -226,6 +226,7 @@ function commandCentre() {
             <span class="sep">·</span> evaluated from snapshot ${esc(String(d.market_snapshot_id).slice(0, 10))}…
             <span class="sep">·</span> config ${esc(d.config_version)}
           </div>
+          ${trendLine(s)}
           <p class="explain">${esc(d.explanation)}</p>
         </div>
         <div class="hero-side">
@@ -374,7 +375,138 @@ function drawerAudit() {
     </div>`;
 }
 
+function trendLine(s) {
+  const t = s.trend;
+  if (!t || t.position === "UNAVAILABLE") {
+    return `<div class="trend-line">1D / SMA200 context unavailable</div>`;
+  }
+  const distance = Number(t.distance_pct);
+  const tone = t.position === "BELOW" ? "neg" : "pos";
+  return `<div class="trend-line">
+      1D close <b>${n(t.daily_close, 2)}</b>
+      <span class="sep">·</span> SMA200 <b>${n(t.sma200, 2)}</b>
+      <span class="sep">·</span> <b class="${tone}">${distance > 0 ? "+" : ""}${n(distance, 2)}% ${esc(t.position)}</b>
+      <span class="ctx">context only · never a gate</span>
+    </div>`;
+}
+
+/* ---------------- research drawer ---------------- */
+function drawerResearch() {
+  const r = S.state.research;
+  if (!r || r.ok === false) {
+    return `<div class="banner">${esc((r && r.reason) || "No study has been run yet.")}</div>
+      <div class="card tight">
+        <div class="card-head"><h2>Veto study</h2><span class="note">2 years, daily + 4H</span></div>
+        <p class="hint">Tests whether the external 200D / 4H hard-downtrend veto carries information: how often it fires,
+        and what price did afterwards. It does not test your stance.</p>
+        <button class="btn primary" id="run_research" style="margin-top:10px">Run study</button>
+      </div>`;
+  }
+  const horizons = [1, 5, 10, 20];
+  const states = ["VETO ACTIVE", "VETO INACTIVE"];
+  const cell = (state, horizon, field) => {
+    const row = (r.forward_returns || []).find((f) => f.state === state && f.horizon_days === horizon);
+    if (!row || row[field] === null || row[field] === undefined) return "—";
+    return n(row[field], field === "positive_pct" ? 1 : 2);
+  };
+  const days = (state) => (r.veto && r.veto.active_days !== undefined)
+    ? (state === "VETO ACTIVE" ? r.veto.active_days : r.veto.inactive_days) : "—";
+
+  return `
+    <div class="card tight">
+      <div class="card-head"><h2>Window</h2>
+        <span class="note">${esc(r.window.from)} → ${esc(r.window.to)} · ${r.window.days} days</span></div>
+      <div class="grid-4" style="grid-template-columns:repeat(2,1fr)">
+        ${stat("Veto active", n(r.veto.active_share_pct, 1) + "%", r.veto.active_days + " of " + r.window.evaluated_days + " days")}
+        ${stat("Current", r.veto.current.veto ? "ACTIVE" : "INACTIVE", r.veto.current.structure + " · " + r.veto.current.day)}
+      </div>
+    </div>
+
+    <div class="card tight">
+      <div class="card-head"><h2>Forward return after each state</h2><span class="note">percent, close to close</span></div>
+      <table>
+        <thead><tr><th>State</th><th class="num">Days</th>
+          ${horizons.map((h) => `<th class="num">${h}d</th>`).join("")}
+          <th class="num">% positive 20d</th><th class="num">Worst 20d</th></tr></thead>
+        <tbody>${states.map((state) => `<tr>
+          <td>${esc(state)}</td>
+          <td class="num">${days(state)}</td>
+          ${horizons.map((h) => `<td class="num">${cell(state, h, "mean_pct")}</td>`).join("")}
+          <td class="num">${cell(state, 20, "positive_pct")}%</td>
+          <td class="num">${cell(state, 20, "worst_pct")}</td>
+        </tr>`).join("")}</tbody>
+      </table>
+      <p class="hint" style="margin-top:8px">If the two rows look alike, the veto is not separating good days from bad ones.</p>
+    </div>
+
+    <div class="card tight">
+      <div class="card-head"><h2>Hold versus veto-filtered hold</h2><span class="note">no fees or slippage</span></div>
+      <table>
+        <thead><tr><th>Portfolio</th><th class="num">Total</th><th class="num">CAGR</th><th class="num">Max drawdown</th></tr></thead>
+        <tbody>
+          <tr><td>Always in BTC</td><td class="num">${n(r.strategy.always_in.total_return_pct, 1)}%</td>
+            <td class="num">${n(r.strategy.always_in.cagr_pct, 1)}%</td>
+            <td class="num">${n(r.strategy.always_in.max_drawdown_pct, 1)}%</td></tr>
+          <tr><td>In BTC only when veto inactive</td><td class="num">${n(r.strategy.veto_filtered.total_return_pct, 1)}%</td>
+            <td class="num">${n(r.strategy.veto_filtered.cagr_pct, 1)}%</td>
+            <td class="num">${n(r.strategy.veto_filtered.max_drawdown_pct, 1)}%</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card tight">
+      <div class="card-head"><h2>Assumptions</h2><span class="note">read before believing any number</span></div>
+      <ul class="plain-list">${(r.assumptions || []).map((a) => `<li>${esc(a)}</li>`).join("")}</ul>
+      <button class="btn" id="run_research" style="margin-top:10px">Re-run study</button>
+    </div>`;
+}
+
+/* ---------------- telemetry drawer ---------------- */
+function drawerTelemetry() {
+  const t = S.state.telemetry;
+  if (!t) {
+    return `<div class="banner">No external snapshot found. Place the Data Hub report at <code>data/telemetry/latest.md</code>
+      and refresh. It is ingested as context only — it can never change a stance.</div>`;
+  }
+  const gate = t.gate_zero || {};
+  return `
+    <div class="card tight">
+      <div class="card-head"><h2>External snapshot</h2><span class="note">${esc(t.as_of || "no timestamp")}</span></div>
+      <p class="hint">${esc(t.coverage || "")}</p>
+      ${t.freshness_warning ? `<div class="banner" style="margin-top:10px">${esc(t.freshness_warning)}</div>` : ""}
+      <p class="hint" style="margin-top:10px">Context only. Nothing on this panel is allowed to change the stance — it exists to show
+      what a wider data set says, next to what CORTEX observed itself.</p>
+    </div>
+
+    <div class="card tight">
+      <div class="card-head"><h2>Their hard-downtrend veto</h2><span class="note">as reported, not computed here</span></div>
+      <table>
+        <tbody>
+          <tr><td>Veto status</td><td class="num">${esc(gate.veto_status || "—")}</td></tr>
+          <tr><td>Condition A — 1D below SMA200</td><td class="num">${esc(gate.condition_a || "—")}</td></tr>
+          <tr><td>Condition B — 4H downside structure</td><td class="num">${esc(gate.condition_b || "—")}</td></tr>
+          <tr><td>Their portfolio status</td><td class="num">${esc(gate.portfolio_status || "—")}</td></tr>
+          <tr><td>Their entry permission</td><td class="num">${esc(gate.new_entry || "—")}</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    ${(t.sections || []).map((section) => `
+      <div class="card tight">
+        <div class="card-head"><h2>${esc(section.section)}</h2><span class="note">${section.rows.length} rows</span></div>
+        <table>
+          <tbody>${section.rows.map((row) => `<tr>
+            <td style="width:42%">${esc(row.label)}</td>
+            <td class="num" style="text-align:left">${esc(row.value)}</td>
+            <td style="width:90px">${row.status ? `<span class="badge ${row.status === "OK" ? "b-pass" : row.status === "UNAVAILABLE" ? "b-unavailable" : "b-not_configured"}">${esc(row.status)}</span>` : ""}</td>
+          </tr>`).join("")}</tbody>
+        </table>
+      </div>`).join("")}`;
+}
+
 const PANELS = {
+  research: ["Research · veto study", drawerResearch],
+  telemetry: ["External telemetry", drawerTelemetry],
   config: ["Configuration", drawerConfig],
   audit: ["Audit & provenance", drawerAudit],
 };
@@ -441,6 +573,24 @@ function wireView() {
 }
 
 function wireDrawer() {
+  const run = $("#run_research");
+  if (run) {
+    run.addEventListener("click", async () => {
+      run.disabled = true;
+      run.textContent = "Running…";
+      try {
+        const report = await api("/api/research/refresh", { method: "POST", body: "{}" });
+        S.state.research = report;
+        toast("Veto study complete.", true);
+        renderDrawer();
+      } catch (error) {
+        toast(error.message);
+        run.disabled = false;
+        run.textContent = "Run study";
+      }
+    });
+  }
+
   const save = $("#save_config");
   if (save) {
     save.addEventListener("click", async () => {

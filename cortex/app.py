@@ -3,16 +3,19 @@
 from __future__ import annotations
 
 import json
+import os
 import threading
 from datetime import datetime, timedelta
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
 from .authority import decide
 from .config import Config, empty_config
-from .domain import DataStatus, MarketSnapshot, iso, utc_now
+from .domain import DataStatus, MarketSnapshot, dec_str, iso, utc_now
 from .market import build_snapshot
 from .store import Store
+from .telemetry import TelemetryReport, freshness_warning, load_telemetry
 
 SNAPSHOT_TTL_SECONDS = 45
 
@@ -33,6 +36,11 @@ class CortexApp:
         self._lock = threading.RLock()
         self._snapshot: MarketSnapshot | None = None
         self._snapshot_at: datetime | None = None
+        self._telemetry: TelemetryReport | None = None
+        self._telemetry_mtime: float | None = None
+        root = Path(db_path).resolve().parents[1]
+        self.telemetry_path = os.environ.get("CORTEX_TELEMETRY", str(root / "data" / "telemetry" / "latest.md"))
+        self.research_path = os.environ.get("CORTEX_RESEARCH", str(root / "data" / "research.json"))
         self._ensure_config(seed_config)
 
     # -- configuration -----------------------------------------------------
@@ -98,6 +106,51 @@ class CortexApp:
             self._snapshot_at = utc_now()
             return snapshot, False
 
+    # -- external context ----------------------------------------------------
+    def telemetry(self) -> dict[str, Any] | None:
+        """External snapshot, ingested as context. It can never change a stance."""
+        path = Path(self.telemetry_path)
+        if not path.exists():
+            return None
+        stat = path.stat()
+        with self._lock:
+            if self._telemetry is None or self._telemetry_mtime != stat.st_mtime:
+                self._telemetry = load_telemetry(path)
+                self._telemetry_mtime = stat.st_mtime
+            report = self._telemetry
+        if report is None:
+            return None
+        payload = report.to_dict()
+        warning = freshness_warning(report)
+        payload["freshness_warning"] = warning
+        payload["gating"] = False
+        return payload
+
+    def research(self) -> dict[str, Any] | None:
+        path = Path(self.research_path)
+        if not path.exists():
+            return None
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            return None
+
+    def trend(self, market: MarketSnapshot) -> dict[str, Any]:
+        daily_close = market.value("daily_close")
+        sma200 = market.value("sma200")
+        distance = None
+        position = "UNAVAILABLE"
+        if daily_close is not None and sma200 not in (None, 0):
+            distance = ((daily_close - sma200) / sma200) * 100
+            position = "BELOW" if daily_close < sma200 else "ABOVE"
+        return {
+            "daily_close": dec_str(daily_close),
+            "sma200": dec_str(sma200),
+            "distance_pct": dec_str(distance.quantize(Decimal("0.01"))) if distance is not None else None,
+            "position": position,
+            "gating": False,
+        }
+
     # -- stance ------------------------------------------------------------
     def build_state(self, *, force: bool = False) -> dict[str, Any]:
         config = self.config()
@@ -112,6 +165,9 @@ class CortexApp:
             "config_missing": list(config.missing()),
             "market": market.to_dict(),
             "decision": decision.to_dict(),
+            "trend": self.trend(market),
+            "telemetry": self.telemetry(),
+            "research": self.research(),
             "integrations": {
                 "degraded_features": [
                     {"key": key, "status": feature.status.value, "detail": feature.detail}

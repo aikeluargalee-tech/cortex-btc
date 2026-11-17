@@ -279,14 +279,25 @@ def build_snapshot(
 
     regen_days = getattr(config.regime, "sma_days", None) or 50
     try:
-        daily = client.klines("1d", max(regen_days + 5, 60))
+        daily = client.klines("1d", 260)
         closed_daily = [bar for bar in daily if bar.close_time <= utc_now()]
         if len(closed_daily) < regen_days:
             raise MarketDataError("insufficient daily bars for SMA")
         sma = sum((bar.close for bar in closed_daily[-regen_days:]), Decimal("0")) / Decimal(regen_days)
         features["sma"] = Feature(sma, DataStatus.VERIFIED, f"derived: {regen_days}d close SMA", closed_daily[-1].close_time, "regime reference")
+        features["daily_close"] = Feature(
+            closed_daily[-1].close, DataStatus.VERIFIED, "binance 1d klines", closed_daily[-1].close_time, "last closed daily bar"
+        )
+        if len(closed_daily) >= 200:
+            sma200 = sum((bar.close for bar in closed_daily[-200:]), Decimal("0")) / Decimal(200)
+            features["sma200"] = Feature(
+                sma200, DataStatus.VERIFIED, "derived: 200d close SMA", closed_daily[-1].close_time, "long-horizon trend context, never a gate"
+            )
+        else:
+            unavailable("sma200", "fewer than 200 closed daily bars")
     except Exception as error:  # noqa: BLE001
         unavailable("sma", f"daily bars unavailable: {error}")
+        unavailable("sma200", f"daily bars unavailable: {error}")
 
     # Contextual derivatives telemetry — never a gate on its own.
     try:

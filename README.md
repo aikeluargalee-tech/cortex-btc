@@ -80,6 +80,34 @@ other. Neither can produce a stance on its own; the synthesis step does.
   `UNAVAILABLE` and never blocks a stance.
 - Futures open interest and funding are contextual only.
 
+## External telemetry (context, never a gate)
+
+A wider Data Hub snapshot can be dropped at `data/telemetry/latest.md`. It is
+parsed into labelled rows with their statuses and shown in the Telemetry drawer,
+including the external hard-downtrend veto verbatim. **Nothing parsed from it can
+change a stance** — the JSON carries `"gating": false`, and the parser lives
+outside the decision path. Stale files are flagged.
+
+## Trend context
+
+The header shows the last closed 1D candle against its 200-day SMA. It is
+displayed so "no setup" can be read in the context of a hostile or supportive
+higher timeframe. It is not a gate; the regime gate still uses the configured
+50-day SMA.
+
+## Research: the veto study
+
+`POST /api/research/refresh` (or the button in the Research drawer) replays daily
+and 4H history and reports:
+
+- how often the 200D / 4H veto is active;
+- forward 1/5/10/20-day returns after veto-active versus veto-inactive days;
+- an always-in hold versus a veto-filtered hold, with drawdown.
+
+Assumptions are printed with the result: close-to-close, no fees, signal applied
+the next day, approximate 4H pivots, in-sample. Overlapping forward windows mean
+the effective sample is far smaller than the day count suggests.
+
 ## Layout
 
 ```
@@ -89,11 +117,14 @@ cortex/config.py            immutable versioned configuration
 cortex/modules.py           Module A, Module B, regime classification
 cortex/authority.py         six gates, conflict resolution, stance
 cortex/market.py            Binance public ingestion + derived features
+cortex/telemetry.py         external snapshot parser (context only)
+cortex/backtest.py          veto study: forward returns, filtered equity
+cortex/research.py          history fetch + study runner
 cortex/store.py             SQLite: decisions, config versions, meta
 cortex/app.py               orchestration services
 cortex/server.py            loopback HTTP API + static dashboard
 cortex/web/                 dashboard (vanilla ES modules, no build)
-tests/                      20 tests: evidence, gates, governance, determinism
+tests/                      27 tests: evidence, gates, governance, parser, study
 ```
 
 ## Tests
