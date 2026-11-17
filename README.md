@@ -10,6 +10,12 @@ what to do with the observation.
 > implied. Every number in the shipped profile is an illustrative research
 > starting point, not an optimised parameter.
 
+![Market stance](docs/stance.png)
+
+**This repository is the source, not a live site.** GitHub stores the code; the
+dashboard is a Python process you run yourself (see *Quick start* below, then
+*Hosting on the local network*).
+
 ## What it publishes
 
 | Stance | Meaning |
@@ -124,6 +130,8 @@ including the external hard-downtrend veto verbatim. **Nothing parsed from it ca
 change a stance** — the JSON carries `"gating": false`, and the parser lives
 outside the decision path. Stale files are flagged.
 
+![Telemetry](docs/telemetry.png)
+
 ## Trend context
 
 The header shows the last closed 1D candle against its 200-day SMA. It is
@@ -143,6 +151,8 @@ and 4H history and reports:
 Assumptions are printed with the result: close-to-close, no fees, signal applied
 the next day, approximate 4H pivots, in-sample. Overlapping forward windows mean
 the effective sample is far smaller than the day count suggests.
+
+![Veto study](docs/research.png)
 
 ## Layout
 
